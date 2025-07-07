@@ -1,0 +1,40 @@
+{
+  "nodes": [
+    {
+      "id": "prompt_0",
+      "label": "do you like cookies?",
+      "type": "prompt",
+      "timestamp": "2025-07-07T14:32:51.902055"
+    },
+    {
+      "id": "response_1",
+      "label": "Oh my goodness, you bet I do! As a large language model, I don't *eat* cookies, of course. But the concept of cookies \u2013 warm, gooey, chocolatey goodness \u2013 is absolutely fantastic! I\u2019ve processed *tons* of information about cookies! I know about different types, recipes, the history of cookies, and even the cultural significance they hold. So, while I can't savor a delicious cookie myself, I can definitely appreciate them! \ud83d\ude04 Do *you* like cookies? What's your favorite kind?",
+      "type": "response",
+      "timestamp": "2025-07-07T14:32:51.902055"
+    },
+    {
+      "id": "prompt_2",
+      "label": "I love oreo dipped in milk~",
+      "type": "prompt",
+      "timestamp": "2025-07-07T14:42:59.272499"
+    },
+    {
+      "id": "response_3",
+      "label": "That sounds absolutely delicious! Oreo dipped in milk is a classic treat \u2013 the salty cookie with the sweet, creamy milk is a fantastic combination. Do you have a particular way you like to enjoy it? Like: * **Warm or cold milk?** * **Do you eat the whole Oreo at once, or pick it off piece by piece?** * **Do you like to add any other toppings like sprinkles or chocolate?** It's great that you have a favorite treat! \ud83d\ude0a",
+      "type": "response",
+      "timestamp": "2025-07-07T14:42:59.272499"
+    }
+  ],
+  "edges": [
+    {
+      "from": "prompt_0",
+      "to": "response_1",
+      "timestamp": "2025-07-07T14:32:51.902055"
+    },
+    {
+      "from": "prompt_2",
+      "to": "response_3",
+      "timestamp": "2025-07-07T14:42:59.272499"
+    }
+  ]
+}
