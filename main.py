@@ -1,64 +1,43 @@
-import ollama
-import asyncio
+from flask import Flask, request, jsonify, send_from_directory
+import requests
 import json
-from concurrent.futures import ThreadPoolExecutor
 import os
-from datetime import datetime
 
-# File to store the mindmap
-MINDMAP_FILE = "mindmap.json"
+app = Flask(__name__)
 
-def initialize_mindmap():
-    """Initialize or load the mindmap JSON file."""
-    if not os.path.exists(MINDMAP_FILE):
-        with open(MINDMAP_FILE, 'w') as f:
-            json.dump({"nodes": [], "edges": []}, f, indent=2)
-    with open(MINDMAP_FILE, 'r') as f:
-        return json.load(f)
+@app.route('/')
+def serve_ui():
+    """Serve the web UI."""
+    static_folder = os.path.join(os.getcwd(), 'static')
+    index_path = os.path.join(static_folder, 'index.html')
+    print(f"Looking for index.html at: {index_path}")  # Debug log
+    if not os.path.exists(index_path):
+        print(f"Error: index.html not found at {index_path}")
+        return jsonify({"error": "index.html not found in static folder"}), 404
+    return app.send_static_file('index.html')
 
-def update_mindmap(prompt, response):
-    """Update the mindmap JSON with a new prompt-response pair."""
-    mindmap = initialize_mindmap()
-    timestamp = datetime.now().isoformat()
-    
-    # Add prompt and response as nodes
-    prompt_node = {"id": f"prompt_{len(mindmap['nodes'])}", "label": prompt, "type": "prompt", "timestamp": timestamp}
-    response_node = {"id": f"response_{len(mindmap['nodes'])+1}", "label": response, "type": "response", "timestamp": timestamp}
-    
-    # Add nodes and edge to mindmap
-    mindmap['nodes'].extend([prompt_node, response_node])
-    mindmap['edges'].append({"from": prompt_node['id'], "to": response_node['id'], "timestamp": timestamp})
-    
-    # Save updated mindmap
-    with open(MINDMAP_FILE, 'w') as f:
-        json.dump(mindmap, f, indent=2)
-
-async def get_response(user_prompt):
-    """
-    Sends a user prompt to Gemma 3 via ollama and returns a response limited to 140 words.
-    """
-    loop = asyncio.get_event_loop()
-    with ThreadPoolExecutor() as pool:
-        response = await loop.run_in_executor(pool, lambda: ollama.chat(model="gemma3", messages=[{"role": "user", "content": user_prompt}]))
-        refined_text = (response['message']['content'].replace('\n', ' ').strip() 
-                        if 'message' in response and 'content' in response['message'] 
-                        else "Sorry, I couldn't generate a response.")
-        words = refined_text.split()
-        return ' '.join(words[:140])
-
-async def main():
-    """
-    Allows multiple prompts to Gemma 3 until the user types 'quit', updating the mindmap.
-    """
-    print("Enter your prompt for Gemma 3 (type 'quit' to exit):")
-    while True:
-        user_prompt = input("Prompt: ")
-        if user_prompt.lower() == "quit":
-            print("Goodbye!")
-            break
-        response = await get_response(user_prompt)
-        print(f"Gemma 3: {response}\n")
-        update_mindmap(user_prompt, response)
+@app.route('/chat', methods=['POST'])
+def proxy_chat():
+    """Proxy requests to Ollama API and handle streaming response."""
+    try:
+        data = request.json
+        response = requests.post('http://localhost:11434/api/chat', json=data, stream=True, timeout=30)
+        if response.status_code != 200:
+            return jsonify({"error": f"Ollama API error: {response.status_code} - {response.text}"}), response.status_code
+        
+        # Collect streaming response
+        full_response = ""
+        for line in response.iter_lines():
+            if line:
+                try:
+                    json_data = json.loads(line.decode('utf-8'))
+                    if json_data.get('message') and json_data['message'].get('content'):
+                        full_response += json_data['message']['content']
+                except json.JSONDecodeError:
+                    continue  # Skip invalid JSON lines
+        return jsonify({"message": {"content": full_response}})
+    except requests.exceptions.RequestException as e:
+        return jsonify({"error": f"Failed to connect to Ollama server: {str(e)}"}), 500
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    app.run(debug=True, host='0.0.0.0', port=5000)

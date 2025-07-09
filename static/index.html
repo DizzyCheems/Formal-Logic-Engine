@@ -31,18 +31,29 @@
             const promptInput = document.getElementById('promptInput');
             const responseOutput = document.getElementById('responseOutput');
             const prompt = promptInput.value.trim();
-            if (!prompt) return;
+            if (!prompt) {
+                responseOutput.textContent = 'Please enter a prompt.';
+                return;
+            }
 
+            responseOutput.textContent = 'Loading...';
             try {
-                const response = await fetch('http://localhost:11434/api/chat', {
+                const response = await fetch('/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         model: 'gemma3',
-                        messages: [{ role: 'user', content: prompt }]
+                        messages: [{ role: 'user', content: prompt }],
+                        stream: false  // Ensure non-streaming response
                     })
                 });
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
                 const data = await response.json();
+                if (data.error) {
+                    throw new Error(data.error);
+                }
                 const responseText = data.message?.content.replace(/\n/g, ' ').trim() || 'Sorry, I couldn’t generate a response.';
                 const words = responseText.split(' ');
                 const limitedResponse = words.slice(0, 140).join(' ');
@@ -50,7 +61,7 @@
                 promptInput.value = '';
             } catch (error) {
                 console.error('Error submitting prompt:', error);
-                responseOutput.textContent = 'Error getting response.';
+                responseOutput.textContent = `Error: ${error.message}. Ensure the Flask server and Ollama server are running.`;
             }
         }
 
