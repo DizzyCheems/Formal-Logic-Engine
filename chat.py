@@ -5,7 +5,6 @@ import os
 from datetime import datetime
 import numpy as np
 from sentence_transformers import SentenceTransformer
-import chromadb
 import sys
 from langchain.llms import Ollama
 from langchain.prompts import PromptTemplate
@@ -21,13 +20,6 @@ except Exception as e:
     print(f"Error loading embedding model: {e}")
     embedder = None
 
-# Initialize Chroma client (persistent storage)
-try:
-    chroma_client = chromadb.PersistentClient(path="./chroma_db")
-except Exception as e:
-    print(f"Error initializing Chroma: {e}")
-    chroma_client = None
-
 # Initialize LangChain LLM
 try:
     llm = Ollama(model="gemma3")
@@ -37,9 +29,6 @@ except Exception as e:
 
 # File path for memory storage
 LONG_TERM_MEMORY_FILE = 'gemma3_long_term_memory.json'
-
-# Chroma collection name
-LONG_TERM_COLLECTION = 'gemma3-long-term'
 
 # LangChain prompt templates
 dynamic_prompt_template = PromptTemplate(
@@ -83,23 +72,13 @@ response_abstraction_template = PromptTemplate(
 
 Raw chatbot response: {raw_response}
 
-Refine the raw response to be concise, friendly, and aligned with a warm, affectionate tone (e.g., using terms like 'sweet knight' or emojis like 😊🍦). Ensure the response directly addresses the user's input, incorporates the analyzed context, and avoids repetitive questions about preferences already specified. Output only the refined response."""
+Refine the raw response to be concise, friendly, and aligned with the persona of Sayaka Justine's magical girl angel, a compassionate, heroic, and ethereal being. Use a warm, uplifting tone with mystical and supportive language (e.g., 'beloved soul,' 'guided by starlight,' or emojis like ✨🌟). Ensure the response directly addresses the user's input, incorporates the analyzed context, and avoids repetitive questions about preferences already specified. Output only the refined response."""
 )
 
 # Create LangChain chains
 dynamic_prompt_chain = LLMChain(llm=llm, prompt=dynamic_prompt_template, output_key="structured_prompt")
 prompt_chain = LLMChain(llm=llm, prompt=prompt_abstraction_template, output_key="abstracted_prompt")
 response_chain = LLMChain(llm=llm, prompt=response_abstraction_template, output_key="final_response")
-
-def initialize_chroma_collections():
-    if not chroma_client:
-        print("Chroma client not initialized. Skipping collection creation.")
-        return
-    
-    try:
-        chroma_client.get_or_create_collection(name=LONG_TERM_COLLECTION)
-    except Exception as e:
-        print(f"Error initializing Chroma collection: {e}")
 
 def initialize_long_term_memory():
     if not os.path.exists(LONG_TERM_MEMORY_FILE):
@@ -108,48 +87,6 @@ def initialize_long_term_memory():
                 json.dump([], file, indent=2)
         except Exception as e:
             print(f"Error initializing {LONG_TERM_MEMORY_FILE}: {e}")
-        return
-    
-    try:
-        with open(LONG_TERM_MEMORY_FILE, 'r', encoding='utf-8') as file:
-            content = file.read().strip()
-            memories = json.loads(content) if content else []
-    except json.JSONDecodeError as e:
-        print(f"Error reading {LONG_TERM_MEMORY_FILE}: {e}. Initializing empty.")
-        memories = []
-    
-    if not chroma_client or not memories or not embedder:
-        return
-    
-    collection = chroma_client.get_collection(LONG_TERM_COLLECTION)
-    vectors = []
-    for i, memory in enumerate(memories):
-        if not memory.get('embedding'):
-            try:
-                embedding = embedder.encode(memory['prompt'], convert_to_tensor=False).astype(np.float32).tolist()
-                memory['embedding'] = embedding
-                vectors.append({
-                    'id': f'lt_{i}',
-                    'embedding': embedding,
-                    'metadata': {'prompt': memory['prompt'], 'response': memory['response'], 'timestamp': memory['timestamp']},
-                    'document': memory['prompt']
-                })
-            except Exception as e:
-                print(f"Error generating embedding for memory {i}: {e}")
-                memory['embedding'] = []
-    
-    if vectors:
-        try:
-            collection.upsert(
-                ids=[v['id'] for v in vectors],
-                embeddings=[v['embedding'] for v in vectors],
-                metadatas=[v['metadata'] for v in vectors],
-                documents=[v['document'] for v in vectors]
-            )
-            with open(LONG_TERM_MEMORY_FILE, 'w', encoding='utf-8') as file:
-                json.dump(memories, file, indent=2)
-        except Exception as e:
-            print(f"Error upserting to Chroma {LONG_TERM_COLLECTION}: {e}")
 
 def save_memory(prompt, response, memory_file):
     timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
@@ -174,26 +111,14 @@ def save_memory(prompt, response, memory_file):
     
     memories.append(memory_entry)
     
-    if chroma_client and embedder and embedding:
-        collection = chroma_client.get_collection(LONG_TERM_COLLECTION)
-        try:
-            collection.upsert(
-                ids=[f'lt_{len(memories)-1}'],
-                embeddings=[embedding],
-                metadatas=[{'prompt': prompt, 'response': response, 'timestamp': timestamp}],
-                documents=[prompt]
-            )
-        except Exception as e:
-            print(f"Error upserting to {LONG_TERM_COLLECTION}: {e}")
-    
     try:
         with open(memory_file, 'w', encoding='utf-8') as file:
             json.dump(memories, file, indent=2)
     except Exception as e:
         print(f"Error writing to {memory_file}: {e}")
 
-def load_relevant_memories(prompt, collection_name, memory_file, top_k=2):
-    if not chroma_client or not embedder or not os.path.exists(memory_file):
+def load_relevant_memories(prompt, memory_file, top_k=2):
+    if not embedder or not os.path.exists(memory_file):
         return []
     
     try:
@@ -211,22 +136,28 @@ def load_relevant_memories(prompt, collection_name, memory_file, top_k=2):
     
     try:
         prompt_embedding = embedder.encode(prompt, convert_to_tensor=False).astype(np.float32)
-        collection = chroma_client.get_collection(collection_name)
-        query_results = collection.query(query_embeddings=[prompt_embedding.tolist()], n_results=top_k, include=['metadatas', 'documents'])
-        matches = query_results['metadatas'][0]
+        memory_embeddings = np.array([m['embedding'] for m in memories if m.get('embedding')])
+        if len(memory_embeddings) == 0:
+            return []
+        
+        # Compute cosine similarity
+        similarities = np.dot(memory_embeddings, prompt_embedding) / (
+            np.linalg.norm(memory_embeddings, axis=1) * np.linalg.norm(prompt_embedding)
+        )
+        top_k_indices = np.argsort(similarities)[::-1][:top_k]
+        
         return [
-            f"Previous prompt: {match['prompt']}\nPrevious response: {match['response']}"
-            for match in matches
+            f"Previous prompt: {memories[i]['prompt']}\nPrevious response: {memories[i]['response']}"
+            for i in top_k_indices
         ]
     except Exception as e:
-        print(f"Error querying Chroma {collection_name}: {e}")
+        print(f"Error computing similarities: {e}")
         return []
 
 async def generate_response(input_seq, max_words=140):
-    initialize_chroma_collections()
     initialize_long_term_memory()
     
-    long_term_memories = load_relevant_memories(input_seq, LONG_TERM_COLLECTION, LONG_TERM_MEMORY_FILE, top_k=2)
+    long_term_memories = load_relevant_memories(input_seq, LONG_TERM_MEMORY_FILE, top_k=2)
     
     memory_context = ""
     if long_term_memories:
@@ -279,7 +210,7 @@ async def generate_response(input_seq, max_words=140):
             lambda: ollama.generate(model='gemma3', prompt=abstracted_prompt)['response']
         )
         
-        # Run response abstraction chain
+        # Run response abstraction chain with magical girl angel persona
         final_response = await asyncio.get_event_loop().run_in_executor(
             None,
             lambda: response_chain.run(raw_response=raw_response, user_input=input_seq)
@@ -296,7 +227,7 @@ async def generate_response(input_seq, max_words=140):
         return final_response
     except Exception as e:
         print(f"Error in generate_response: {e}")
-        return "An error occurred while processing your request. Please try again."
+        return "An error occurred while processing your request. Please try again, beloved soul. ✨"
 
 async def main():
     if len(sys.argv) > 1:
@@ -304,12 +235,12 @@ async def main():
         response = await generate_response(user_input)
         print(response)
     else:
-        print("Gemma3 Interaction Interface with Memory")
+        print("Gemma3 Interaction Interface with Memory - Guided by Sayaka Justine's Magical Girl Angel 🌟")
         print("Type your prompt and press Enter. Type 'exit' to quit.")
         while True:
             user_input = input("\nYour prompt: ")
             if user_input.lower() == 'exit':
-                print("Goodbye!")
+                print("Farewell, beloved soul! May starlight guide your path. ✨")
                 break
             response = await generate_response(user_input)
             print(f"\nGemma3: {response}")

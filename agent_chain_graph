@@ -1,0 +1,23 @@
+// Model Agent Chain Structure
+digraph {
+	rankdir=LR size="8,5"
+	Input [label="User Input" fillcolor=lightblue shape=ellipse style=filled]
+	Dynamic [label="Dynamic Prompt Chain
+(Analyzes input, reconstructs prompt)" fillcolor=lightgreen shape=box style=filled]
+	Prompt [label="Prompt Abstraction Chain
+(Refines prompt with memory context)" fillcolor=lightyellow shape=box style=filled]
+	Response [label="Response Abstraction Chain
+(Refines response as Sayaka Justine's Magical Girl Angel)" fillcolor=lightpink shape=box style=filled]
+	Output [label="Final Response" fillcolor=lightblue shape=ellipse style=filled]
+	Memory [label="Long-Term Memory
+(JSON file storage)" fillcolor=lightgrey shape=cylinder style=filled]
+	Input -> Dynamic [label="User input"]
+	Dynamic -> Prompt [label="Structured prompt"]
+	Prompt -> Response [label="Abstracted prompt"]
+	Response -> Output [label="Final response"]
+	Memory -> Prompt [label="Memory context" style=dashed]
+	Output -> Memory [label="Save prompt & response" style=dashed]
+	label="Model Agent Chain Structure
+(Sayaka Justine's Magical Girl Angel Persona)"
+	fontsize=20
+}
