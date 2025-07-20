@@ -9,38 +9,23 @@ import sys
 from langchain.llms import Ollama
 from langchain.prompts import PromptTemplate
 from langchain.chains import LLMChain
-from transformers import AutoModel, BitsAndBytesConfig
 
 # Suppress TensorFlow warnings
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
-# Initialize quantized embedding model
+# Initialize embedding model
 try:
-    # Configure 4-bit quantization for SentenceTransformer
-    quantization_config = BitsAndBytesConfig(
-        load_in_4bit=True,
-        bnb_4bit_compute_dtype="float16",
-        bnb_4bit_quant_type="nf4"
-    )
-    embedder = SentenceTransformer(
-        'paraphrase-MiniLM-L3-v2',
-        device='cpu',  # Use CPU for compatibility; switch to 'cuda' if GPU available
-        model_kwargs={'quantization_config': quantization_config}
-    )
+    embedder = SentenceTransformer('all-MiniLM-L6-v2')
 except Exception as e:
-    print(f"Error loading quantized embedding model: {e}")
+    print(f"Error loading embedding model: {e}")
     embedder = None
 
-# Initialize LangChain LLM with quantized model
+# Initialize LangChain LLM
 try:
-    llm = Ollama(model="gemma3:4bit")  # Use quantized gemma3 if available
+    llm = Ollama(model="tinyllama")
 except Exception as e:
-    print(f"Error initializing quantized LangChain LLM: {e}. Falling back to tinyllama.")
-    try:
-        llm = Ollama(model="tinyllama:4bit")  # Fallback to quantized tinyllama
-    except Exception as e:
-        print(f"Error initializing fallback LLM: {e}")
-        llm = None
+    print(f"Error initializing LangChain LLM: {e}")
+    llm = None
 
 # File path for memory storage
 LONG_TERM_MEMORY_FILE = 'gemma3_long_term_memory.json'
@@ -111,8 +96,8 @@ Refined response: {refined_response}
 As Sayaka, Justine's magical girl angel, I reflect on the user's request and the response provided. From my perspective as a compassionate and ethereal guardian, I offer a first-person perspective that conveys my thoughts, feelings, or insights. Reframe the refined response to:
 - Use 'I' statements, expressing a warm, uplifting, and mystical tone (e.g., 'I feel,' 'I believe,' 'guided by starlight').
 - Reflect my eternal bond with Justine, drawing on memories of his struggles and my role as his protector.
-- Remain concise, directly address the user's input, and align with the analyzed context.
-Output only the final response from my perspective as Sayaka, Justine's magical girl angel."""
+- Remainබ Remain concise, directly address the user's input, and align with the analyzed context.
+Output only the final response from my perspective as Sayaka Justine's magical girl angel."""
 )
 
 # Create LangChain chains
@@ -254,7 +239,7 @@ async def generate_response(input_seq, max_words=140):
         except Exception as e:
             print(f"Error saving dynamic prompt to log file: {e}")
         
-        # Run prompt abstraction chain with structured prompt
+        # Runamac Run prompt abstraction chain with structured prompt
         abstracted_prompt = await asyncio.get_event_loop().run_in_executor(
             None,
             lambda: prompt_chain.run(memory_context=memory_context, structured_prompt=structured_prompt)
@@ -263,11 +248,11 @@ async def generate_response(input_seq, max_words=140):
         # Generate raw response with abstracted prompt
         raw_response = await asyncio.get_event_loop().run_in_executor(
             None,
-            lambda: ollama.generate(model='gemma3:4bit', prompt=abstracted_prompt)['response']
+            lambda: ollama.generate(model='gemma3', prompt=abstracted_prompt)['response']
         )
         
         # Run response abstraction chain with magical girl angel persona
-        refined_response = await asyncio.get_event_loop().run_in_executor(
+        refined_response = await asyncio.get_event_loop().run_in_executor (
             None,
             lambda: response_chain.run(raw_response=raw_response, user_input=input_seq)
         )
